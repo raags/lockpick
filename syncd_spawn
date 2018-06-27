@@ -1,0 +1,165 @@
+#!/bin/bash
+
+# Author: Pradeep Jindal <pradeep@helpshift.com>
+# Description: Amazing little tool, read the code and know what it does
+
+function usage() {
+  cat <<END
+Spawns the given command only if it can acquire (create) the given node in ZK.
+Waits on if the given node already exists or exits with error otherwise, simple as that.
+Useful for running programs in distributed environments where the runs need to be synchronized.
+
+$0 -n NODE -C CONTENT [options] <COMMAND>
+  -d             run in debug mode, prints lot of information for debugging
+  -z PATH        path to the zookeepercli command, default is zookeepercli in your PATH
+  -s ZK_SERVERS  zk servers to connect to host1[:port1][,host2[:port2]]... format, default is localhost:2181
+  -r PATH        zk chroot to use, default is /devops
+  -S SECONDS     numbers of seconds to wait between retrying for a lock, default is 5 seconds
+  -i RETRIES     number of times to retry acquiring lock, default is infinite
+  -n NODE        zk node path to lock, for example /service/api, REQUIRED
+  -l LOCKTYPE    lock type to use, options are: [lock, rlock, wlock], REQUIRED
+  -C CONTENT     content to put in the zk node, useful for debugging/informative purposes, REQUIRED
+END
+}
+
+while getopts 'z:s:r:i:S:n:l:C:hd' opts
+do
+  case $opts in
+  z)
+    ZKCMD="$OPTARG";;
+  s)
+    ZK_SERVERS="$OPTARG";;
+  r)
+    ZKCHROOT="$OPTARG";;
+  S)
+    SLEEP="$OPTARG";;
+  n)
+    NODE="$OPTARG";;
+  l)
+    LOCKTYPE="$OPTARG";;
+  C)
+    CONTENT="$OPTARG";;
+  i)
+    RETRIES="$OPTARG";;
+  d)
+    export DEBUG="yes";;
+  h|*)
+    usage; exit 1;;
+  esac
+done
+
+# Take rest of args as the command
+shift $(($OPTIND -1))
+if echo "$*" | grep -qE '\S+';then
+  COMMAND="$*"
+fi
+
+if [ -z "$NODE" -o -z "$LOCKTYPE" -o -z "$CONTENT" -o -z "$COMMAND" ];then
+  echo
+  echo "ERROR: -n -C -l & COMMAND are mandatory"
+  echo
+  usage
+  exit 1
+fi
+
+if [[ ! "$LOCKTYPE" =~ [rw]?lock ]]; then
+  echo "ERROR: Unknown -l LOCKTYPE '$LOCKTYPE' passed"
+  echo "Usage: "
+  usage
+  exit 1
+fi
+
+## Set vars
+ZKCHROOT="${ZKCHROOT:-/devops}"
+ZK_SERVERS="${ZK_SERVERS:-localhost:2181}"
+LOCKPICKCMD="${LOCKPICKCMD:-lockpick}"
+LOCKPICK="$LOCKPICKCMD -s $ZK_SERVERS -c $ZKCHROOT"
+
+SLEEP="${SLEEP:-5}"
+RETRIES="${RETRIES:-3}"
+
+
+## Functions
+function runit() {
+    [[ -n "$NOOUT" ]] && OUTREDIRECT=' >/dev/null 2>&1' || OUTREDIRECT=""
+    CMD="${@}${OUTREDIRECT}"
+    eval "$CMD"
+    RET=$?
+    [[ -n "$DEBUG" ]] && echo "Executed: '$CMD', exited with $RET"
+    return $RET
+}
+
+function _lockpick_lock() {
+  local LOCK_TYPE=$1
+  local NODE="${2%/}"
+  local CONTENT="$3"
+  local RETRIES=${4:-1}
+  local SLEEP=${5:-5}
+
+  CMDOUT="$(runit $LOCKPICK -i "'$CONTENT'" -r $RETRIES -p $SLEEP $LOCK_TYPE $NODE)"
+  if [[ $? -eq 0 ]]; then
+    # stdout should only contain the ZK LOCKPATH
+    echo "Got lock on $NODE" >&2
+    echo $CMDOUT
+  else
+    echo "Couldn't lock '$NODE': $CMDOUT" >&2
+    return 1
+  fi
+}
+
+function lockpick_wlock() {
+  _lockpick_lock wlock "$@"
+  return $?
+}
+
+function lockpick_rlock() {
+  _lockpick_lock rlock "$@"
+  return $?
+}
+
+function lockpick_lock() {
+  lockpick_wlock "$@"
+  return $?
+}
+
+function lockpick_unlock() {
+  local NODE="${1%/}"
+  local VERIFY_DATA="$2"
+
+  if [[ -n $VERIFY_DATA ]]; then
+    VERIFY_DATA_OPTS="-i '$VERIFY_DATA'"
+  else
+    VERIFY_DATA_OPTS=""
+  fi
+
+  runit $LOCKPICK $VERIFY_DATA_OPTS unlock $NODE
+  RET=$?
+  if [[ $RET -ne 0 ]]; then
+    echo "Couldn't unlock '$NODE'"
+  else
+    echo "Unlocked '$NODE'"
+  fi
+  return $RET
+}
+
+function lock_cleanup() {
+  lockpick_unlock "$1" "$2"
+}
+
+function runcmd() {
+  echo "Running your command $COMMAND"
+  runit $COMMAND
+  export COMMAND_EXIT=$?
+  exit $COMMAND_EXIT
+}
+
+## MAIN
+
+LOCKPATH=$(lockpick_$LOCKTYPE "$NODE" "$CONTENT" "$RETRIES" "$SLEEP")
+if [[ $? -eq 0 ]]; then
+  # The following handles SIGINT and SIGTERM along with normal EXIT
+  trap 'lock_cleanup $LOCKPATH "$CONTENT"' EXIT
+  runcmd
+else
+  exit 1
+fi
