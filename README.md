@@ -55,7 +55,7 @@ We recommend using pip to install in a virtualenv :
 
 ```
 $ virtualenv lockpick
-$ pip install lockpick
+$ pip install lockpick-hsft
 ```
 
 ## Example
