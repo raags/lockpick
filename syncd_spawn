@@ -11,7 +11,7 @@ Useful for running programs in distributed environments where the runs need to b
 
 $0 -n NODE -C CONTENT [options] <COMMAND>
   -d             run in debug mode, prints lot of information for debugging
-  -z PATH        path to the zookeepercli command, default is zookeepercli in your PATH
+  -c LOCKPICKCMD path to lockpick command, default is lockpick cmd in your PATH
   -s ZK_SERVERS  zk servers to connect to host1[:port1][,host2[:port2]]... format, default is localhost:2181
   -r PATH        zk chroot to use, default is /devops
   -S SECONDS     numbers of seconds to wait between retrying for a lock, default is 5 seconds
@@ -22,11 +22,11 @@ $0 -n NODE -C CONTENT [options] <COMMAND>
 END
 }
 
-while getopts 'z:s:r:i:S:n:l:C:hd' opts
+while getopts 'c:s:r:i:S:n:l:C:hd' opts
 do
   case $opts in
-  z)
-    ZKCMD="$OPTARG";;
+  c)
+    LOCKPICKCMD="$OPTARG";;
   s)
     ZK_SERVERS="$OPTARG";;
   r)

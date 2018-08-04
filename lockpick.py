@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import sys
 import signal
@@ -8,11 +8,12 @@ from concurrent import futures
 from kazoo.client import KazooClient
 from kazoo.exceptions import LockTimeout, NoNodeError
 
-# TODO: write tests
-
 LOGGING_FORMAT = '[%(asctime)s] %(levelname)s %(name)s: %(message)s'
-logging.basicConfig(level=logging.WARNING, format=LOGGING_FORMAT, handlers=logging.StreamHandler(sys.stderr))
+logging.basicConfig(level=logging.WARNING,
+                    format=LOGGING_FORMAT)
+h = logging.StreamHandler(sys.stderr)
 logger = logging.getLogger('lockpick')
+logger.addHandler(h)
 
 
 def list_contenders(zk, lock_path):
@@ -46,7 +47,7 @@ def release_lock(zk, lock_path, identifier=None):
     """
     try:
         lock_data = zk.get(lock_path)
-        if identifier and lock_data[0] != identifier:
+        if identifier and lock_data[0].decode('utf-8') != identifier:
             logger.error("Identifier mistmatch, got '{0}'".format(lock_data[0]))
             return False
 
@@ -181,7 +182,7 @@ def main():
 
     elif args.action == 'list':
         for contender in list_contenders(zk, args.lock_path):
-            print contender
+            print(contender)
 
     else:
         l = acquire_lock(zk, args.action, args.lock_path, args.identifier,
@@ -190,7 +191,7 @@ def main():
         if l and l.is_acquired:
             zk_path = args.lock_path + '/' + l.node
             logger.info("Lock {0} with path {1} acquired".format(args.lock_path, zk_path))
-            print zk_path
+            print(zk_path)
         else:
             logger.error("Failed to acquire lock within timeout!")
             zk.stop()

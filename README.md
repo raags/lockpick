@@ -2,8 +2,6 @@
 
 Lockpick is an utility for distributed locking using zookeeper. Its intended to be used in distributed environments where scripts need synchronization between runs.
 
-At Helpshift, its primarily used for parallel and lockless autoscaling.
-
 # Why Lockpick
 
 Lockpick uses the kazoo library but provides following benefits over kazoo recipes :
