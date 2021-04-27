@@ -5,7 +5,7 @@ import os
 from setuptools import setup
 
 setup(name='lockpick',
-      version='1.0.1',
+      version='1.0.2',
       description='Distributed locking using Zookeeper',
       long_description=open(os.path.join(os.path.dirname(__file__),
                                          'README.md')).read(),
